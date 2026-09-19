@@ -1,0 +1,54 @@
+name: Build IFix Patch
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Clone IFix
+        run: git clone --depth 1 https://github.com/hxdnshx/IFix.git IFix-src
+
+      - name: Build IFix.Cli
+        run: |
+          cd IFix-src
+          nuget restore IFix.sln
+          msbuild IFix.Cli\IFix.Cli.csproj /p:Configuration=Release
+
+      - name: Compile MyAimPatch.dll
+        run: |
+          $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          & $csc /target:library `
+            /out:out\MyAimPatch.dll `
+            /reference:lib\Assembly-CSharp.dll `
+            /reference:lib\IFix.Core.dll `
+            /reference:lib\UnityEngine.CoreModule.dll `
+            src\MyAimPatch.cs
+
+      - name: Generate patch.bytes
+        run: |
+          $cli = Get-ChildItem -Recurse -Filter "IFix.Cli.exe" | Select-Object -First 1
+          & $cli.FullName `
+            --patch-dll   out\MyAimPatch.dll `
+            --target-dll  lib\Assembly-CSharp.dll `
+            --output      out\Assembly-CSharp.patch.bytes
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ifix-patch-output
+          path: out/
