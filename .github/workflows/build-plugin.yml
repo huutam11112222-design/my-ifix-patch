@@ -1,0 +1,36 @@
+name: Build BepInEx Plugin
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Restore
+        run: dotnet restore MyPlugin/MyPlugin.csproj
+
+      - name: Build
+        run: dotnet build MyPlugin/MyPlugin.csproj -c Release --no-restore
+
+      - name: Find output
+        run: |
+          find . -name "MyAimPlugin.dll" -exec ls -la {} \;
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bepinex-plugin
+          path: '**/MyAimPlugin.dll'
+          retention-days: 30
