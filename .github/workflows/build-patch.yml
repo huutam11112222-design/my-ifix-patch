@@ -1,4 +1,4 @@
-name: Build IFix Patch
+name: Build IFix Patch with Unity
 
 on:
   push:
@@ -7,48 +7,45 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-
 
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
+      - name: Run IFix GenPatch
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 2019.4.40f1
+          targetPlatform: Android
+          buildMethod: IFix.Editor.IFixEditor.GenPatch
+          allowDirtyBuild: true
 
-      - name: Clone IFix
-        run: git clone --depth 1 https://github.com/hxdnshx/IFix.git IFix-src
-
-      - name: Build IFix.Cli
+      - name: Find patch files
         run: |
-          cd IFix-src
-          nuget restore IFix.sln
-          msbuild IFix.Cli\IFix.Cli.csproj /p:Configuration=Release
-
-      - name: Compile MyAimPatch.dll
-        run: |
-          $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          New-Item -ItemType Directory -Force -Path out | Out-Null
-          & $csc /target:library `
-            /out:out\MyAimPatch.dll `
-            /reference:lib\Assembly-CSharp.dll `
-            /reference:lib\IFix.Core.dll `
-            /reference:lib\UnityEngine.CoreModule.dll `
-            src\MyAimPatch.cs
-
-      - name: Generate patch.bytes
-        run: |
-          $cli = Get-ChildItem -Recurse -Filter "IFix.Cli.exe" | Select-Object -First 1
-          & $cli.FullName `
-            --patch-dll   out\MyAimPatch.dll `
-            --target-dll  lib\Assembly-CSharp.dll `
-            --output      out\Assembly-CSharp.patch.bytes
+          echo "=== Searching for .bytes files ==="
+          find . -name "*.bytes" -o -name "*.patch.bytes" 2>/dev/null
+          echo "=== End ==="
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ifix-patch-output
-          path: out/
+          path: |
+            **/*.patch.bytes
+            **/*.bytes
+          if-no-files-found: warn
+          retention-days: 30
